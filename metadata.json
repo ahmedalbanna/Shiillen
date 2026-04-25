@@ -1,0 +1,10 @@
+{
+  "name": "شِلّن - Shiillen",
+  "description": "منصة لوجستية تشاركية تربط المسافرين بصناع القرار وأصحاب الطرود في اليمن، باستخدام الباصات والمحلات التجارية كشبكة بريد عادلة.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone",
+    "geolocation"
+  ],
+  "majorCapabilities": []
+}

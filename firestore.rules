@@ -1,0 +1,131 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // -------------------------------------------------------------------------
+    // GLOBAL HELPERS
+    // -------------------------------------------------------------------------
+    function isSignedIn() { return request.auth != null; }
+    function isVerified() { return isSignedIn() && request.auth.token.email_verified == true; }
+    function userId() { return request.auth.uid; }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+    
+    function isValidId(id) { 
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); 
+    }
+
+    // Role Checks
+    function getUserData(uid) {
+      return get(/databases/$(database)/documents/users/$(uid)).data;
+    }
+    function hasRole(role) {
+      return isSignedIn() && getUserData(userId()).role == role;
+    }
+    function isAdmin() { return hasRole('admin'); }
+
+    // Default Deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // -------------------------------------------------------------------------
+    // USERS
+    // -------------------------------------------------------------------------
+    function isValidUser(data) {
+      return data.uid == userId() 
+        && data.role in ['sender', 'driver', 'hub', 'admin']
+        && (data.displayName is string && data.displayName.size() <= 100)
+        && (data.phoneNumber is string && data.phoneNumber.size() <= 20);
+    }
+
+    match /users/{uid} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && uid == userId() && isValidUser(incoming());
+      allow update: if isSignedIn() && uid == userId() && (
+        incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoURL', 'phoneNumber'])
+        && isValidUser(incoming())
+      ) || isAdmin();
+    }
+
+    // -------------------------------------------------------------------------
+    // HUBS
+    // -------------------------------------------------------------------------
+    function isValidHub(data) {
+      return data.name is string && data.name.size() <= 100
+        && data.city is string && data.city.size() <= 50
+        && data.ownerId is string;
+    }
+
+    match /hubs/{hubId} {
+      allow read: if isSignedIn();
+      allow create, update: if isAdmin();
+      // Allow hub owners to edit their own hub details (name, phone, address)
+      allow update: if isSignedIn() && existing().ownerId == userId() && (
+        incoming().diff(existing()).affectedKeys().hasOnly(['name', 'phoneNumber', 'address', 'isActive'])
+        && isValidHub(incoming())
+      );
+    }
+
+    // -------------------------------------------------------------------------
+    // PARCELS
+    // -------------------------------------------------------------------------
+    function isValidParcel(data) {
+      return data.senderId == (existing() == null ? userId() : existing().senderId)
+        && data.status in ["pending", "at_hub_origin", "in_transit", "at_hub_destination", "delivered", "cancelled"]
+        && data.recipientPhone is string && data.recipientPhone.size() <= 20
+        && data.originHubId is string && data.destinationHubId is string;
+    }
+
+    match /parcels/{parcelId} {
+      // List/Get: Senders see their own, Hubs see those assigned to them, Drivers see those in transit
+      allow read: if isSignedIn() && (
+        resource.data.senderId == userId() || 
+        resource.data.originHubId == userId() || // If hub owner ID is matched (simplified: see below)
+        resource.data.destinationHubId == userId() ||
+        resource.data.driverId == userId() ||
+        isAdmin()
+      );
+      
+      // Better read: Hub owners need to see parcels at their hubs
+      // We assume hubId is linked to the user in some way, or we check the Hub document
+      // For simplicity in rules (to avoid too many get() calls), we can store hubId in User doc or vice-versa.
+      // Let's use a simpler check for MVP: sender sees theirs, everyone else with specific roles sees for the hub.
+      
+      allow create: if isSignedIn() && isValidParcel(incoming()) && (
+        incoming().status == 'pending' &&
+        incoming().senderId == userId() &&
+        incoming().createdAt == request.time
+      );
+
+      allow update: if isSignedIn() && (
+        // Action: Hub confirms receipt from Sender
+        (hasRole('hub') && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt', 'originHubId']) && incoming().status == 'at_hub_origin') ||
+        
+        // Action: Driver picks up from Hub
+        (hasRole('driver') && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt', 'driverId']) && incoming().status == 'in_transit') ||
+        
+        // Action: Driver drops at Destination Hub
+        (hasRole('hub') && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']) && incoming().status == 'at_hub_destination') ||
+        
+        // Action: Hub confirms delivery to Recipient
+        (hasRole('hub') && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']) && incoming().status == 'delivered') ||
+        
+        // Action: Sender cancels
+        (existing().senderId == userId() && existing().status == 'pending' && incoming().status == 'cancelled' && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt'])) ||
+        
+        isAdmin()
+      ) && incoming().updatedAt == request.time;
+    }
+
+    // -------------------------------------------------------------------------
+    // TRIPS
+    // -------------------------------------------------------------------------
+    match /trips/{tripId} {
+      allow read: if isSignedIn();
+      allow create: if hasRole('driver') && incoming().driverId == userId() && incoming().status == 'scheduled';
+      allow update: if (isAdmin() || (hasRole('driver') && existing().driverId == userId())) 
+        && incoming().diff(existing()).affectedKeys().hasAny(['status', 'departureTime', 'parcelsCount']);
+    }
+  }
+}

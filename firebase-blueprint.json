@@ -1,0 +1,109 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile information and role.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "displayName": { "type": "string" },
+        "phoneNumber": { "type": "string" },
+        "role": { "type": "string", "enum": ["sender", "driver", "hub", "admin"] },
+        "photoURL": { "type": "string" },
+        "email": { "type": "string" },
+        "isVerified": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "role"]
+    },
+    "Hub": {
+      "title": "Hub",
+      "description": "A physical point (shop/grocery) where parcels are dropped or picked up.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "city": { "type": "string" },
+        "address": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "phoneNumber": { "type": "string" },
+        "isActive": { "type": "boolean" }
+      },
+      "required": ["name", "city", "ownerId"]
+    },
+    "Driver": {
+      "title": "Driver",
+      "description": "Information about the driver and their vehicle.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "vehicleType": { "type": "string" },
+        "plateNumber": { "type": "string" },
+        "isVerified": { "type": "boolean" },
+        "rating": { "type": "number" }
+      },
+      "required": ["uid", "vehicleType", "plateNumber"]
+    },
+    "Parcel": {
+      "title": "Parcel",
+      "description": "A shipment being moved between cities.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "senderId": { "type": "string" },
+        "recipientName": { "type": "string" },
+        "recipientPhone": { "type": "string" },
+        "description": { "type": "string" },
+        "voiceNoteUrl": { "type": "string" },
+        "photoUrl": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "at_hub_origin", "in_transit", "at_hub_destination", "delivered", "cancelled"] },
+        "originHubId": { "type": "string" },
+        "destinationHubId": { "type": "string" },
+        "driverId": { "type": "string" },
+        "route": { "type": "string" },
+        "price": { "type": "number" },
+        "trackingCode": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["senderId", "recipientPhone", "status", "originHubId", "destinationHubId"]
+    },
+    "Trip": {
+      "title": "Trip",
+      "description": "A scheduled or active journey by a driver.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "driverId": { "type": "string" },
+        "originCity": { "type": "string" },
+        "destinationCity": { "type": "string" },
+        "status": { "type": "string", "enum": ["scheduled", "on_road", "completed"] },
+        "departureTime": { "type": "string", "format": "date-time" },
+        "parcelsCount": { "type": "number" }
+      },
+      "required": ["driverId", "originCity", "destinationCity", "status"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles"
+    },
+    "/hubs/{hubId}": {
+      "schema": "Hub",
+      "description": "Collection of hub points"
+    },
+    "/drivers/{driverId}": {
+      "schema": "Driver",
+      "description": "Collection of drivers"
+    },
+    "/parcels/{parcelId}": {
+      "schema": "Parcel",
+      "description": "Collection of parcels"
+    },
+    "/trips/{tripId}": {
+      "schema": "Trip",
+      "description": "Collection of driver trips"
+    }
+  }
+}
