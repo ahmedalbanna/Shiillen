@@ -1,31 +1,33 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;900&display=swap');
 @import "tailwindcss";
+@import "leaflet/dist/leaflet.css";
 
 @theme {
-  --font-sans: "Outfit", "Inter", ui-sans-serif, system-ui, sans-serif;
+  --color-brand-primary: #FF5722;
+  --color-brand-secondary: #1A1A1A;
+  --color-brand-background: #FDFCF9;
+  --color-brand-accent: #FFECB3;
+  --color-brand-light: #F5F5F0;
+  --color-brand-green: #2E7D32;
   
-  --color-brand-primary: #C19A6B; /* Sand */
-  --color-brand-secondary: #8B4513; /* Earth */
-  --color-brand-background: #FDF5E6; /* Cream */
-  --color-brand-accent: #DAA520; /* Goldenrod */
-  
-  --shadow-warm: 0 4px 20px -2px rgba(139, 69, 19, 0.1);
+  --shadow-hard: 4px 4px 0px #1A1A1A;
+  --shadow-hard-lg: 8px 8px 0px #1A1A1A;
 }
 
 body {
-  @apply bg-brand-background text-zinc-900 font-sans;
+  @apply bg-brand-background text-brand-secondary font-sans;
 }
 
 .glass-card {
-  @apply bg-white/80 backdrop-blur-md border border-white/20 shadow-warm rounded-2xl;
+  @apply bg-white border-2 border-brand-secondary shadow-hard rounded-none p-4;
 }
 
 .btn-primary {
-  @apply px-6 py-3 bg-brand-primary text-white font-semibold rounded-xl transition-all active:scale-95 shadow-md hover:bg-brand-primary/90;
+  @apply px-6 py-3 bg-brand-primary text-white font-black uppercase tracking-wider border-2 border-brand-secondary shadow-hard rounded-none transition-transform active:translate-x-1 active:translate-y-1 active:shadow-none hover:bg-brand-primary/90;
 }
 
 .btn-secondary {
-  @apply px-6 py-3 bg-white border-2 border-brand-primary text-brand-primary font-semibold rounded-xl transition-all active:scale-95 hover:bg-brand-primary/5;
+  @apply px-6 py-3 bg-white text-brand-secondary font-black uppercase tracking-wider border-2 border-brand-secondary shadow-hard rounded-none transition-transform active:translate-x-1 active:translate-y-1 active:shadow-none hover:bg-brand-light;
 }
 
 /* Custom RTL styling if needed */
