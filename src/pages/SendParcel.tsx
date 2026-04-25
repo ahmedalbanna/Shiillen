@@ -1,19 +1,27 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../App';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
-import { ArrowRight, ChevronLeft, MapPin, User, Phone, CheckCircle, Package, Mic, Square, Play, Trash2 } from 'lucide-react';
+import { ArrowRight, ChevronLeft, MapPin, User, Phone, CheckCircle, Package, Mic, Square, Play, Trash2, Camera, CreditCard, Banknote, HelpCircle } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 const CITIES = ["صنعاء", "تعز", "عدن", "إب", "الحديدة", "حضرموت", "مأرب", "يافع", "شبوة"];
 const CATEGORIES = ["ملابس", "طعام/عسل", "وثائق", "إلكترونيات", "أخرى"];
+const PAYMENT_METHODS = [
+  { id: 'cash', label: 'نقداً', icon: Banknote },
+  { id: 'wallet', label: 'محفظة إلكترونية', icon: CreditCard },
+  { id: 'credit', label: 'رصيد الهاتف', icon: Phone },
+];
 
 export default function SendParcel() {
   const { user, profile } = useAuth();
   const navigate = useNavigate();
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  
   const [formData, setFormData] = useState({
     recipientName: '',
     recipientPhone: '',
@@ -22,6 +30,8 @@ export default function SendParcel() {
     originCity: '',
     destCity: '',
     voiceNoteDataUrl: '',
+    photoDataUrl: '',
+    paymentMethod: 'cash',
   });
 
   const [isRecording, setIsRecording] = useState(false);
@@ -30,6 +40,13 @@ export default function SendParcel() {
   const audioChunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (profile?.city && !formData.originCity) {
+      setFormData(prev => ({ ...prev, originCity: profile.city }));
+    }
+  }, [profile]);
 
   const startRecording = async () => {
     try {
@@ -66,7 +83,7 @@ export default function SendParcel() {
       }, 1000);
     } catch (err) {
       console.error("Error accessing microphone:", err);
-      alert("يرجى السماح بالوصول إلى الميكروفون للتسجيل.");
+      toast.error("يرجى السماح بالوصول إلى الميكروفون للتسجيل.");
     }
   };
 
@@ -78,25 +95,74 @@ export default function SendParcel() {
     }
   };
 
-  const handleNext = () => setStep(s => s + 1);
+  const handlePhotoCapture = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onloadend = () => {
+        setFormData(prev => ({ ...prev, photoDataUrl: reader.result as string }));
+      };
+    }
+  };
+
+  const validateStep1 = () => {
+    if (!formData.recipientName || !formData.recipientPhone || !formData.category) {
+      toast.error("يرجى إكمال جميع الحقول الأساسية");
+      return false;
+    }
+    return true;
+  };
+
+  const validateStep2 = () => {
+    if (!formData.originCity || !formData.destCity) {
+      toast.error("يرجى اختيار مدينة الإرسال والوصول");
+      return false;
+    }
+    if (formData.originCity === formData.destCity) {
+      toast.error("مدينة الإرسال والوصول لا يمكن أن تكون متطابقة");
+      return false;
+    }
+    return true;
+  };
+
+  const handleNext = () => {
+    if (step === 1 && !validateStep1()) return;
+    if (step === 2 && !validateStep2()) return;
+    setStep(s => s + 1);
+  };
+  
   const handlePrev = () => setStep(s => s - 1);
 
   const handleSubmit = async () => {
     if (!user) return;
     setLoading(true);
+    setUploadProgress(10);
     try {
+      // Simulate file upload progress
+      const progressTimer = setInterval(() => {
+        setUploadProgress(prev => Math.min(prev + 20, 90));
+      }, 500);
+
       const docRef = await addDoc(collection(db, 'parcels'), {
         ...formData,
         senderId: user.uid,
         status: 'pending',
         route: `${formData.originCity} ← ${formData.destCity}`,
-        originHubId: 'system_default', // In reality, user would select a hub
+        originHubId: 'system_default',
         destinationHubId: 'system_default',
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
-      navigate(`/parcel/${docRef.id}`);
+      clearInterval(progressTimer);
+      setUploadProgress(100);
+      
+      setTimeout(() => {
+        toast.success("تم تسجيل الشحنة بنجاح");
+        navigate(`/parcel/${docRef.id}`);
+      }, 500);
     } catch (err) {
+      setUploadProgress(0);
       handleFirestoreError(err, OperationType.CREATE, 'parcels');
     } finally {
       setLoading(false);
@@ -189,7 +255,7 @@ export default function SendParcel() {
                 </div>
               </div>
 
-              <div>
+              <div className="mb-4">
                 <label className="block text-[10px] font-black uppercase text-gray-400 tracking-widest mb-2">التسجيل الصوتي (اختياري)</label>
                 {!formData.voiceNoteDataUrl ? (
                   <div className={`p-4 border-2 border-brand-secondary flex flex-col items-center justify-center gap-3 ${isRecording ? 'bg-red-50' : 'bg-brand-light'}`}>
@@ -203,7 +269,7 @@ export default function SendParcel() {
                     ) : (
                       <>
                         <p className="text-xs text-center font-bold">اضغط للتسجيل الصوتي (حد أقصى 15 ثانية)</p>
-                        <button onClick={startRecording} className="w-12 h-12 rounded-full border-2 border-brand-secondary bg-brand-accent text-brand-secondary flex items-center justify-center">
+                        <button onClick={startRecording} className="w-12 h-12 rounded-full border-2 border-brand-secondary bg-brand-accent text-brand-secondary flex items-center justify-center transform active:scale-95 transition-transform">
                           <Mic size={20} />
                         </button>
                       </>
@@ -229,6 +295,38 @@ export default function SendParcel() {
                   </div>
                 )}
               </div>
+
+              <div>
+                <label className="block text-[10px] font-black uppercase text-gray-400 tracking-widest mb-2">صورة الطرد (اختياري)</label>
+                <input 
+                  type="file" 
+                  accept="image/*" 
+                  capture="environment"
+                  className="hidden" 
+                  ref={fileInputRef} 
+                  onChange={handlePhotoCapture} 
+                />
+                {!formData.photoDataUrl ? (
+                  <button 
+                    onClick={() => fileInputRef.current?.click()}
+                    className="w-full p-4 border-2 border-dashed border-brand-secondary bg-brand-light flex flex-col items-center justify-center gap-2 hover:bg-white transition-colors cursor-pointer"
+                  >
+                    <Camera size={24} className="text-brand-secondary" />
+                    <span className="text-xs font-bold">التقط أو ارفع صورة</span>
+                  </button>
+                ) : (
+                  <div className="relative border-2 border-brand-secondary p-1">
+                    <img src={formData.photoDataUrl} alt="Parcel" className="w-full h-32 object-cover" />
+                    <button 
+                      onClick={() => setFormData({...formData, photoDataUrl: ''})}
+                      className="absolute top-2 right-2 p-1 bg-red-500 text-white border-2 border-brand-secondary"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                )}
+              </div>
+
             </div>
 
             <button onClick={handleNext} className="w-full btn-primary flex items-center justify-center gap-2">
@@ -279,7 +377,7 @@ export default function SendParcel() {
             </div>
 
             <button onClick={handleNext} className="w-full btn-primary flex items-center justify-center gap-2">
-              <span>التالي: المراجعة</span>
+              <span>التالي: الدفع والمراجعة</span>
               <ChevronLeft size={20} />
             </button>
           </motion.div>
@@ -295,31 +393,69 @@ export default function SendParcel() {
             <div className="glass-card space-y-4">
               <h3 className="font-black uppercase flex items-center gap-2 mb-4">
                 <CheckCircle size={18} className="text-green-600" />
-                <span>المراجعة</span>
+                <span>المراجعة والدفع</span>
               </h3>
-              <div className="space-y-3 font-bold text-sm">
-                <div className="flex justify-between border-b-2 border-brand-light pb-2">
-                  <span className="text-gray-500 uppercase tracking-widest text-[10px]">من:</span>
+              
+              <div className="mb-6">
+                <h4 className="text-[10px] font-black uppercase text-gray-400 tracking-widest mb-2">طريقة الدفع</h4>
+                <div className="grid grid-cols-1 gap-2">
+                  {PAYMENT_METHODS.map(method => (
+                    <button
+                      key={method.id}
+                      onClick={() => setFormData({...formData, paymentMethod: method.id})}
+                      className={`p-3 border-2 flex items-center gap-3 transition-colors ${
+                        formData.paymentMethod === method.id 
+                          ? 'border-brand-secondary bg-brand-primary text-white shadow-hard' 
+                          : 'border-brand-secondary bg-white text-brand-secondary'
+                      }`}
+                    >
+                      <method.icon size={20} />
+                      <span className="font-bold flex-1 text-right">{method.label}</span>
+                      {formData.paymentMethod === method.id && <CheckCircle size={16} />}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-3 font-bold text-sm bg-brand-light p-4 border-2 border-brand-secondary">
+                <div className="flex justify-between border-b-2 border-brand-secondary/10 pb-2">
+                  <span className="text-brand-secondary uppercase tracking-widest text-[10px]">من:</span>
                   <span>{formData.originCity}</span>
                 </div>
-                <div className="flex justify-between border-b-2 border-brand-light pb-2">
-                  <span className="text-gray-500 uppercase tracking-widest text-[10px]">إلى:</span>
+                <div className="flex justify-between border-b-2 border-brand-secondary/10 pb-2">
+                  <span className="text-brand-secondary uppercase tracking-widest text-[10px]">إلى:</span>
                   <span>{formData.destCity}</span>
                 </div>
-                <div className="flex justify-between border-b-2 border-brand-light pb-2">
-                  <span className="text-gray-500 uppercase tracking-widest text-[10px]">المستلم:</span>
+                <div className="flex justify-between border-b-2 border-brand-secondary/10 pb-2">
+                  <span className="text-brand-secondary uppercase tracking-widest text-[10px]">المستلم:</span>
                   <span>{formData.recipientName}</span>
                 </div>
-                <div className="flex justify-between border-b-2 border-brand-light pb-2">
-                  <span className="text-gray-500 uppercase tracking-widest text-[10px]">الفئة:</span>
+                <div className="flex justify-between border-b-2 border-brand-secondary/10 pb-2">
+                  <span className="text-brand-secondary uppercase tracking-widest text-[10px]">الفئة:</span>
                   <span>{formData.category || 'غير محدد'}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-500 uppercase tracking-widest text-[10px]">التكلفة:</span>
-                  <span className="text-brand-primary text-xl">2,500 <span className="text-xs">ريال</span></span>
+                <div className="flex justify-between items-end pt-2">
+                  <span className="text-brand-secondary uppercase tracking-widest text-[10px]">التكلفة:</span>
+                  <span className="text-brand-primary text-2xl font-black">2,500 <span className="text-xs text-brand-secondary">ريال</span></span>
                 </div>
               </div>
             </div>
+
+            {loading && (
+              <div className="space-y-2">
+                <div className="flex justify-between text-xs font-bold">
+                  <span>جاري رفع البيانات...</span>
+                  <span>{uploadProgress}%</span>
+                </div>
+                <div className="h-2 w-full bg-brand-light border-2 border-brand-secondary overflow-hidden">
+                  <motion.div 
+                    initial={{ width: 0 }}
+                    animate={{ width: `${uploadProgress}%` }}
+                    className="h-full bg-brand-primary"
+                  />
+                </div>
+              </div>
+            )}
 
             <button 
               onClick={handleSubmit} 
